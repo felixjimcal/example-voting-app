@@ -25,6 +25,6 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v3
       with:
-        context: ./vote/Dockerfile
+        context: ./vote
         push: true
         tags: felixjimcal/vote_app_example:latest
