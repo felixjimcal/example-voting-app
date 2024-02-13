@@ -19,11 +19,9 @@ jobs:
           password: '${{ secrets.DOCKERHUB_TOKEN }}'
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
-        permissions:
-          contents: read
-          packages: write # needed to push docker image to ghcr.io
-          pull-requests: write # needed to create and update comments in PRs
         with:
+          dockerhub-enable: true
+          ghcr-enable: true
           context: ./vote
           push: true
           tags: 'felixjimcal/vote_app_example:latest'
