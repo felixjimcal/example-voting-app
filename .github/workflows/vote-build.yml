@@ -33,10 +33,11 @@ jobs:
       - name: Build and Push to GHCR
         uses: docker/build-push-action@v5
         with:
+          context: ./vote
           push: true
           tags: ghcr.io/calibre93/vote_app:${{ github.run_id }}
           target: test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
   
