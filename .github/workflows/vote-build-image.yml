@@ -17,11 +17,4 @@ jobs:
         with:
           username: '${{ secrets.DOCKERHUB_USERNAME }}'
           password: '${{ secrets.DOCKERHUB_TOKEN }}'
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v3
-        with:
-          dockerhub-enable: true
-          ghcr-enable: true
-          context: ./vote
-          push: true
-          tags: 'felixjimcal/vote_app_example:latest'
+
