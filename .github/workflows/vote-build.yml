@@ -1,11 +1,11 @@
 name: Vote Docker Image Management
-'on':
+on:
   push:
     branches:
       - main
   pull_request:
-    branches:
-      - main     
+
+jobs:  
   build-and-push:
     runs-on: ubuntu-latest
     steps:
@@ -47,14 +47,4 @@ name: Vote Docker Image Management
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-          
-    scan-image:
-      name: Scan Image with Trivy
-      needs: [build-test-image]
-      runs-on: ubuntu-latest
-      uses: aquasecurity/trivy-action@master
-      with:
-          image-ref: ${{ github.run_id }}
-          exit-code: 0
-          format: table
-      
+               
