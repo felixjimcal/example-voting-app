@@ -42,17 +42,17 @@ jobs:
       - name: Run Trivy for all CVEs (non-blocking)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'bretfisher/docker-ci-automation:latest' # Adjust this to use the correct image reference
+          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest'
           exit-code: 0
           format: table
       
       - name: Unit Testing in Docker
         run: |
-          docker run --rm ${{ github.run_id }} npm test
+          docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest npm test
 
       - name: Test healthcheck in Docker Compose
         run: |
-          export TESTING_IMAGE="${{ github.run_id }}"
+          export TESTING_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest"
           docker-compose -f docker-compose.test.yml up --exit-code-from sut
           
       - name: Build and push
