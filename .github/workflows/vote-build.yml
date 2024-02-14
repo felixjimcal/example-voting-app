@@ -1,28 +1,18 @@
-name: Vote Docker Image Management
-'on':
+---
+name: 06 Build and Scan
+
+on:
   push:
     branches:
       - main
   pull_request:
-    branches:
-      - main
-permissions:
-  contents: read
-  pull-requests: write
-  security-events: write
 
 jobs:
-  build-and-push:
+  build-image:
+    name: Build Images
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-        name: Checkout git repo
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: '${{ secrets.DOCKERHUB_USERNAME }}'
-          password: '${{ secrets.DOCKERHUB_TOKEN }}'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -30,7 +20,33 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Docker meta
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and export to Docker
+        uses: docker/build-push-action@v5
+        with:
+          push: false
+          load: true # Export to Docker Engine rather than pushing to a registry
+          tags: ${{ github.run_id }}
+          target: test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+#NEW: (START) ##########################################################
+      - name: Run Trivy for all CVEs (non-blocking)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ github.run_id }}
+          exit-code: 0
+          format: table 
+#NEW: (END) ############################################################
+
+      - name: Docker Metadata for Final Image Build
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
@@ -38,67 +54,19 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=raw,value=04
-            type=raw,value=latest,enable=${{ endsWith(github.ref, 'refs/heads/main') }}
-            type=ref,event=pr
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-
-      - name: Build and push
+            type=raw,value=06
+          # comment these out on all but 04-add-metadata.yaml to avoid overwriting image tags
+          # type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
+          # type=ref,event=pr
+          # type=ref,event=branch
+          # type=semver,pattern={{version}}
+      
+      - name: Docker Build and Push to Docker Hub
         uses: docker/build-push-action@v5
         with:
-          context: ./vote
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-
-      - name: Run Trivy for all CVEs (non-blocking)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'calibre93/vote_app:${{ steps.docker_meta.outputs.tags }}'
-          exit-code: 0
-          format: table
-
-      - name: Find comment for image tags
-        uses: peter-evans/find-comment@v3
-        if: github.event_name == 'pull_request'
-        id: fc
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: Docker image tag(s) pushed
-      
-      - name: Create or update comment for image tags
-        uses: peter-evans/create-or-update-comment@v4
-        if: github.event_name == 'pull_request'
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            Docker image tag(s) pushed:
-            ```text
-            ${{ steps.docker_meta.outputs.tags }}
-            ```
-
-            Labels added to images:
-            ```text
-            ${{ steps.docker_meta.outputs.labels }}
-            ```
-
-      - name: Run Trivy for HIGH,CRITICAL CVEs and report (blocking)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'calibre93/vote_app:latest'
-          exit-code: 1
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'HIGH,CRITICAL'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
