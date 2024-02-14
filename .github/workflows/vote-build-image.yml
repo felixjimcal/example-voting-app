@@ -20,5 +20,6 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
+          context: ./vote
           push: ${{ github.event_name != 'pull_request' }}
-          tags: felixjimcal/vote_app:latest
+          tags: felixjimcal/vote_app:latest          
