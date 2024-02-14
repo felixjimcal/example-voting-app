@@ -22,4 +22,4 @@ jobs:
         with:
           context: ./vote
           push: ${{ github.event_name != 'pull_request' }}
-          tags: calibre93/vote_app:latest          
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest          
