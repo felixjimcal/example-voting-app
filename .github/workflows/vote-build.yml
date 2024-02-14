@@ -52,12 +52,18 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Check out the repo content
       - uses: actions/checkout@v3
-        name: Check out the repo content
-
+      
       - name: Run Trivy for all CVEs (non-blocking)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest'
           exit-code: 0
           format: table
+          
+  tests:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Unit Testing in Dockert
+          echo "hi"
