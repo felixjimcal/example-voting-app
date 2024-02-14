@@ -61,4 +61,3 @@ jobs:
           image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest'
           exit-code: 0
           format: table
-          
