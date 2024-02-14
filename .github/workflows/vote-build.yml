@@ -33,7 +33,7 @@ jobs:
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/vote_app
+          images: secrets.DOCKERHUB_USERNAME/vote_app
           flavor: |
             latest=false
           tags: |
@@ -43,21 +43,32 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
 
-      - name: Build and push
+      - name: Build and export to Docker
         uses: docker/build-push-action@v5
         with:
-          context: ./vote
-          push: true
-          tags: ${{ steps.docker_meta.outputs.tags }}
-          labels: ${{ steps.docker_meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: false
+          load: true
+          tags: ${{ github.run_id }}
+          target: test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
 
       - name: Run Trivy for all CVEs (non-blocking)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest' # Adjust this to use the correct image reference
+          image-ref: ${{ github.run_id }}
           exit-code: 0
           format: table
+
+      - name: Unit Testing in Docker
+        run: |
+          docker run --rm ${{ github.run_id }} npm test
+
+      - name: Test healthcheck in Docker Compose
+        run: |
+          export TESTING_IMAGE="${{ github.run_id }}"
+          docker-compose -f docker-compose.test.yml up --exit-code-from sut
 
       - name: Find comment for image tags
         uses: peter-evans/find-comment@v3
@@ -67,7 +78,7 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
           body-includes: Docker image tag(s) pushed
-      
+
       - name: Create or update comment for image tags
         uses: peter-evans/create-or-update-comment@v4
         if: github.event_name == 'pull_request'
