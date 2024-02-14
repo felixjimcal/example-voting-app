@@ -52,6 +52,13 @@ jobs:
           labels: ${{ steps.docker_meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
 
+      - name: Run Trivy for all CVEs (non-blocking)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest' # Adjust this to use the correct image reference
+          exit-code: 0
+          format: table
+
       - name: Find comment for image tags
         uses: peter-evans/find-comment@v3
         if: github.event_name == 'pull_request'
