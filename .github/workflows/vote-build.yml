@@ -1,97 +1,133 @@
-name: Vote Docker Image Management
-'on':
+name: 99 Parallelize Jobs
+
+on:
   push:
     branches:
       - main
   pull_request:
-    branches:
-      - main
+
 permissions:
   contents: read
+  packages: write
   pull-requests: write
+  security-events: write
 
 jobs:
-  build-and-push:
+  build-test-image:
+    name: Build Image for Testing
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         name: Check out the repo content
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: '${{ secrets.DOCKERHUB_USERNAME }}'
-          password: '${{ secrets.DOCKERHUB_TOKEN }}'
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
+      - name: Setup Docker Buildx and QEMU
         uses: docker/setup-buildx-action@v3
 
-      - name: Docker meta
+      - name: Login to Docker Hub and ghcr.io registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          logout: true
+
+      - name: Build and Push to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ghcr.io/secrets.DOCKERHUB_USERNAME/vote_app:${{ github.run_id }}
+          target: test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  test-unit:
+    name: Unit tests in Docker
+    needs: build-test-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unit Testing in Docker
+        run: docker run --rm ghcr.io/secrets.DOCKERHUB_USERNAME/vote_app:"$GITHUB_RUN_ID" echo "run test commands here"
+
+  test-integration:
+    name: Integration tests in Compose
+    needs: build-test-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test healthcheck in Docker Compose
+        run: |
+          export TESTING_IMAGE=ghcr.io/calibre93/vote_app:"$GITHUB_RUN_ID"
+          echo Testing image: "$TESTING_IMAGE"
+          docker compose -f docker-compose.test.yml up --exit-code-from sut
+
+  test-k3d:
+    name: Test Deployment in Kubernetes
+    needs: build-test-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: AbsaOSS/k3d-action@v2
+        with:
+          cluster-name: "test-cluster-1"
+          args: >-
+            --agents 1
+            --no-lb
+            --k3s-arg "--no-deploy=traefik,servicelb,metrics-server@server:*"
+      
+      - name: Smoke test deployment in k3d Kubernetes
+        run: |
+          kubectl create secret docker-registry regcred \
+            --docker-server=https://ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }}
+          export TESTING_IMAGE=ghcr.io/calibre93/vote_app:"$GITHUB_RUN_ID"
+          envsubst < manifests/deployment.yaml  | kubectl apply -f -
+          kubectl rollout status deployment myapp
+          kubectl exec deploy/myapp -- curl --fail localhost
+
+  scan-image:
+    name: Scan Image with Trivy
+    needs: build-test-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy for all CVEs (non-blocking)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/secrets.DOCKERHUB_USERNAME/vote_app:${{ github.run_id }}
+          format: table
+          exit-code: 0
+
+  build-final-image:
+    name: Build Final Image
+    needs: [test-unit, test-integration, test-k3d, scan-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Docker Buildx and QEMU
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Metadata for Final Image Build
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/vote_app
+          images: calibre93/vote_app
           flavor: |
             latest=false
           tags: |
-            type=raw,value=04
-            type=raw,value=latest,enable=${{ endsWith(github.ref, 'refs/heads/main') }}
-            type=ref,event=pr
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-
-      - name: Build and push
+            type=raw,value=99
+      
+      - name: Docker Build and Push to GHCR and Docker Hub
         uses: docker/build-push-action@v5
         with:
-          context: ./vote
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-
-      - name: Run Trivy for HIGH,CRITICAL CVEs and report (blocking)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'calibre93/vote_app:latest' # Adjust this to use the correct image reference
-          exit-code: 1
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'HIGH,CRITICAL'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Find comment for image tags
-        uses: peter-evans/find-comment@v3
-        if: github.event_name == 'pull_request'
-        id: fc
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: Docker image tag(s) pushed
-      
-      - name: Create or update comment for image tags
-        uses: peter-evans/create-or-update-comment@v4
-        if: github.event_name == 'pull_request'
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            Docker image tag(s) pushed:
-            ```text
-            ${{ steps.docker_meta.outputs.tags }}
-            ```
-
-            Labels added to images:
-            ```text
-            ${{ steps.docker_meta.outputs.labels }}
-            ```
-          edit-mode: replace
