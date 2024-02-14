@@ -55,7 +55,7 @@ jobs:
       - name: Run Trivy for HIGH,CRITICAL CVEs and report (blocking)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/vote_app:latest' # Adjust this to use the correct image reference
+          image-ref: 'calibre93/vote_app:latest' # Adjust this to use the correct image reference
           exit-code: 1
           ignore-unfixed: true
           vuln-type: 'os,library'
