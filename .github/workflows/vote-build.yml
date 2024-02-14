@@ -47,4 +47,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-               
+
+  trivy-scan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        name: Check out the repo content
+
+      - name: Run Trivy for all CVEs (non-blocking)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'bretfisher/docker-ci-automation:latest' # Asegúrate de usar la referencia correcta de tu imagen aquí
+          exit-code: 0
+          format: table
